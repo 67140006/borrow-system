@@ -215,6 +215,31 @@
         </div>
     </div>
 
+    <!-- ADMIN PASSWORD MODAL -->
+    <div id="modal-admin-login" class="fixed inset-0 z-50 bg-black/60 items-center justify-center p-4" style="display:none">
+        <div class="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl">
+            <div class="bg-amber-800 text-white p-4 font-bold text-center flex items-center justify-center space-x-2">
+                <i class="fas fa-user-shield"></i><span>เข้าสู่ระบบแอดมิน</span>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-xs text-gray-500 text-center">กรุณาใส่รหัสผ่านสำหรับผู้ดูแลระบบ</p>
+                <div class="relative">
+                    <input type="password" id="admin-password-input" placeholder="รหัสผ่านแอดมิน" 
+                        class="w-full border rounded-lg px-3 py-2.5 pr-10 focus:ring-1 focus:ring-amber-600 focus:outline-none text-sm"
+                        onkeydown="if(event.key==='Enter') confirmAdminLogin()">
+                    <button onclick="togglePasswordVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <i id="pw-eye-icon" class="fas fa-eye text-sm"></i>
+                    </button>
+                </div>
+                <p id="admin-login-error" class="text-red-600 text-xs text-center hidden">รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง</p>
+            </div>
+            <div class="p-3 bg-gray-50 border-t flex space-x-3">
+                <button onclick="closeModal('modal-admin-login')" class="flex-1 bg-gray-200 py-2 rounded-lg text-xs font-bold">ยกเลิก</button>
+                <button onclick="confirmAdminLogin()" class="flex-1 bg-amber-700 text-white py-2 rounded-lg text-xs font-bold hover:bg-amber-800">เข้าสู่ระบบ</button>
+            </div>
+        </div>
+    </div>
+
     <footer class="bg-[#500B11] text-white py-4 px-4 text-center text-xs mt-auto border-t-2 border-[#A21C26]">
         <p>© 2026 สโมสรนิสิตคณะรัฐศาสตร์ มหาวิทยาลัยบูรพา</p>
     </footer>
@@ -413,19 +438,48 @@
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 
+        const ADMIN_PASSWORD = 'polsci2026';
+
         function toggleRole() {
-            const adminBtn = document.getElementById('nav-admin-tab');
             if(currentRole === 'student') {
-                currentRole = 'admin';
-                adminBtn.classList.remove('hidden');
-                document.getElementById('role-badge').innerText = "POL-SCI Admin";
-                document.getElementById('role-badge').className = "bg-amber-800 text-[10px] px-2 py-0.5 rounded-full border border-amber-500";
-                alert("สลับสิทธิ์เป็นแอดมินสำเร็จ! เมนู 'แผงควบคุมแอดมิน' ปรากฏขึ้นแล้วบนแถบเมนู");
+                document.getElementById('admin-password-input').value = '';
+                document.getElementById('admin-login-error').classList.add('hidden');
+                document.getElementById('modal-admin-login').style.display = 'flex';
+                setTimeout(() => document.getElementById('admin-password-input').focus(), 100);
             } else {
                 currentRole = 'student';
-                adminBtn.classList.add('hidden');
+                document.getElementById('nav-admin-tab').classList.add('hidden');
                 document.getElementById('role-badge').innerText = "POL-SCI Student";
                 document.getElementById('role-badge').className = "bg-red-800 text-[10px] px-2 py-0.5 rounded-full border border-red-500";
+                document.getElementById('user-display').innerText = "67000000@go.buu.ac.th (นิสิต)";
+            }
+        }
+
+        function confirmAdminLogin() {
+            const pw = document.getElementById('admin-password-input').value;
+            if(pw === ADMIN_PASSWORD) {
+                closeModal('modal-admin-login');
+                currentRole = 'admin';
+                document.getElementById('nav-admin-tab').classList.remove('hidden');
+                document.getElementById('role-badge').innerText = "POL-SCI Admin";
+                document.getElementById('role-badge').className = "bg-amber-800 text-[10px] px-2 py-0.5 rounded-full border border-amber-500";
+                document.getElementById('user-display').innerText = "admin@polsci.buu.ac.th (แอดมิน)";
+            } else {
+                document.getElementById('admin-login-error').classList.remove('hidden');
+                document.getElementById('admin-password-input').value = '';
+                document.getElementById('admin-password-input').focus();
+            }
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('admin-password-input');
+            const icon = document.getElementById('pw-eye-icon');
+            if(input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fas fa-eye-slash text-sm';
+            } else {
+                input.type = 'password';
+                icon.className = 'fas fa-eye text-sm';
             }
         }
     </script>
