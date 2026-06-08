@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบริหารจัดการและยืม-คืนครุภัณฑ์อัจฉริยะ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts (Sarabun & Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for Beautiful Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- TOP NAVIGATION BAR -->
+        <header class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-lg sticky top-0 z-45">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <!-- Brand Logo -->
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-indigo-600 p-2.5 rounded-xl shadow-md flex items-center justify-center">
+                            <i class="fa-solid fa-boxes-stacked text-white text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-lg font-bold tracking-tight leading-none text-indigo-200">AMST-OS v2</h1>
+                            <p class="text-xs text-slate-300 font-light">ระบบยืม-คืนผสานกูเกิ้ลชีตเรียลไทม์</p>
+                        </div>
+                    </div>
+                    <!-- Sync State indicators -->
+                    <div class="flex items-center space-x-3">
+                        <div v-if="isLoading" class="flex items-center space-x-2 bg-indigo-900/60 border border-indigo-700/50 rounded-xl px-3 py-1.5 text-xs text-indigo-300">
+                            <i class="fa-solid fa-circle-notch animate-spin"></i>
+                            <span>กำลังซิงค์ Google Sheets...</span>
+                        </div>
+                        <div v-else class="hidden sm:flex items-center space-x-2 bg-emerald-950/40 border border-emerald-800/40 rounded-xl px-3 py-1.5 text-xs text-emerald-400">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>เชื่อมโยงกูเกิ้ลชีตเรียบร้อย</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN CONTAINER -->
+        <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            <!-- OVERDUE ALERTS -->
+            <div v-if="overdueItems.length > 0" class="mb-6 bg-rose-50 border-l-4 border-rose-500 rounded-r-xl p-4 shadow-sm">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 text-rose-500 mt-0.5">
+                        <i class="fa-solid fa-triangle-exclamation text-xl animate-bounce"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-semibold text-rose-800">แจ้งเตือนพัสดุเกินกำหนดส่งคืน ({{ overdueItems.length }} รายการ)</h3>
+                        <div class="mt-2 text-xs flex flex-wrap gap-2">
+                            <span v-for="item in overdueItems" :key="item.id" class="inline-flex items-center px-2 py-1 rounded bg-rose-100 text-rose-800 border border-rose-200">
+                                <i class="fa-solid fa-clock-rotate-left mr-1"></i>
+                                {{ item.name }} (ยืมโดย: {{ item.borrower }})
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB MENU -->
+            <div class="mb-6 border-b border-slate-200">
+                <nav class="-mb-px flex space-x-4">
+                    <button @click="currentTab = 'dashboard'" :class="[currentTab === 'dashboard' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700', 'whitespace-nowrap py-3 px-1 border-b-2 text-sm flex items-center space-x-2']">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>ภาพรวมแดชบอร์ด</span>
+                    </button>
+                    <button @click="currentTab = 'inventory'" :class="[currentTab === 'inventory' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700', 'whitespace-nowrap py-3 px-1 border-b-2 text-sm flex items-center space-x-2']">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>พัสดุและครุภัณฑ์ ({{ items.length }})</span>
+                    </button>
+                    <button @click="currentTab = 'history'" :class="[currentTab === 'history' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700', 'whitespace-nowrap py-3 px-1 border-b-2 text-sm flex items-center space-x-2']">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        <span>ประวัติการทำรายการ</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- TAB 1: DASHBOARD -->
+            <div v-show="currentTab === 'dashboard'" class="space-y-6">
+                <!-- Stats Summary -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-500 block">ทั้งหมดในระบบ</span>
+                            <span class="text-2xl font-bold">{{ stats.total }}</span>
+                        </div>
+                        <div class="bg-indigo-50 text-indigo-600 p-3 rounded-xl"><i class="fa-solid fa-database"></i></div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-500 block">ว่าง/พร้อมยืม</span>
+                            <span class="text-2xl font-bold text-emerald-600">{{ stats.available }}</span>
+                        </div>
+                        <div class="bg-emerald-50 text-emerald-600 p-3 rounded-xl"><i class="fa-solid fa-circle-check"></i></div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-500 block">กำลังถูกยืม</span>
+                            <span class="text-2xl font-bold text-amber-600">{{ stats.borrowed }}</span>
+                        </div>
+                        <div class="bg-amber-50 text-amber-500 p-3 rounded-xl"><i class="fa-solid fa-hand-holding-hand"></i></div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-500 block">ชำรุดส่งซ่อม</span>
+                            <span class="text-2xl font-bold text-rose-600">{{ stats.maintenance }}</span>
+                        </div>
+                        <div class="bg-rose-50 text-rose-500 p-3 rounded-xl"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Pie Chart -->
+                    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
+                        <h3 class="text-sm font-semibold text-slate-800">สัดส่วนสถานะครุภัณฑ์ในออฟฟิศ</h3>
+                        <div class="relative w-40 h-40 mx-auto my-4 flex items-center justify-center">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1 text-center text-[10px] border-t border-slate-100 pt-4">
+                            <div><span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1"></span>ว่าง ({{ calculatePercentage(stats.available) }}%)</div>
+                            <div><span class="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1"></span>ยืม ({{ calculatePercentage(stats.borrowed) }}%)</div>
+                            <div><span class="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1"></span>ชำรุด ({{ calculatePercentage(stats.maintenance) }}%)</div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Tools -->
+                    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 lg:col-span-2 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">เครื่องมือลัดเจ้าหน้าที่ (Quick Actions)</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button @click="openAddModal" class="p-4 rounded-xl border border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/20 hover:bg-indigo-50 text-left transition duration-150">
+                                    <div class="flex items-center space-x-2 mb-2">
+                                        <div class="bg-indigo-600 text-white p-1.5 rounded-lg"><i class="fa-solid fa-plus text-sm"></i></div>
+                                        <h4 class="font-bold text-indigo-950 text-xs">ขึ้นทะเบียนชิ้นใหม่ลง Sheets</h4>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400">กรอกข้อมูลครุภัณฑ์หรือวัสดุสิ้นเปลืองใหม่เพื่ออัปเดตลงระบบทันที</p>
+                                </button>
+
+                                <button @click="triggerSimulateQR" class="p-4 rounded-xl border border-dashed border-emerald-200 hover:border-emerald-500 bg-emerald-50/20 hover:bg-emerald-50 text-left transition duration-150">
+                                    <div class="flex items-center space-x-2 mb-2">
+                                        <div class="bg-emerald-600 text-white p-1.5 rounded-lg"><i class="fa-solid fa-qrcode text-sm"></i></div>
+                                        <h4 class="font-bold text-emerald-950 text-xs">แสกน QR code อุปกรณ์</h4>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400">สแกนรหัสเฉพาะทางมือถือเพื่อทำรายการยืม-คืนโดยไม่ต้องค้นหา</p>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 bg-slate-50 border border-slate-200/60 rounded-xl p-3 text-[11px] text-slate-500">
+                            <strong>ความปลอดภัยและการจัดเก็บ:</strong> ข้อมูลทุกตัวอักษรจะซิงค์และแบ็คอัปไว้บน Google Sheet ของเจ้าหน้าที่โดยตรงอย่างแม่นยำ ปราศจากข้อมูลรั่วไหลหรือสูญหาย
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-3">4 กิจกรรมล่าสุดล่าสุด</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-400">
+                                    <th class="py-2.5 px-4">รายการ</th>
+                                    <th class="py-2.5 px-4">ประเภท</th>
+                                    <th class="py-2.5 px-4">ชื่อผู้ยืม-คืน</th>
+                                    <th class="py-2.5 px-4">วันที่ทำรายการ</th>
+                                    <th class="py-2.5 px-4">สถานะส่งงาน</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="log in recentLogs" :key="log.id" class="hover:bg-slate-50/20">
+                                    <td class="py-2.5 px-4 font-semibold text-slate-700">{{ log.itemName }}</td>
+                                    <td class="py-2.5 px-4">
+                                        <span :class="[log.type === 'ยืม' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800', 'px-2 py-0.5 rounded text-[10px] font-bold']">{{ log.type }}</span>
+                                    </td>
+                                    <td class="py-2.5 px-4 text-slate-600">{{ log.person }}</td>
+                                    <td class="py-2.5 px-4 text-slate-500">{{ log.date }}</td>
+                                    <td class="py-2.5 px-4">
+                                        <span v-if="log.type === 'ยืม'" class="text-amber-500 font-semibold"><i class="fa-solid fa-spinner animate-spin mr-1"></i>กำลังใช้งาน</span>
+                                        <span v-else class="text-emerald-500 font-semibold"><i class="fa-solid fa-check mr-1"></i>คืนเสร็จสิ้น</span>
+                                    </td>
+                                </tr>
+                                <tr v-if="recentLogs.length === 0">
+                                    <td colspan="5" class="text-center py-4 text-slate-400">ยังไม่พบบันทึกประวัติ</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: INVENTORY -->
+            <div v-show="currentTab === 'inventory'" class="space-y-6">
+                <!-- Filters -->
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between gap-3">
+                    <div class="relative flex-grow max-w-md">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-slate-400"></i>
+                        <input type="text" v-model="searchQuery" placeholder="ค้นหาตามชื่อ, รหัสครุภัณฑ์ หรือรายละเอียด..." class="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:outline-indigo-500">
+                    </div>
+                    <div class="flex space-x-2">
+                        <select v-model="filterType" class="border border-slate-200 rounded-xl px-3 py-1 text-xs text-slate-500 bg-white">
+                            <option value="ALL">ทุกประเภทหมวด</option>
+                            <option v-for="cat in uniqueCategories" :value="cat">{{ cat }}</option>
+                        </select>
+                        <select v-model="filterStatus" class="border border-slate-200 rounded-xl px-3 py-1 text-xs text-slate-500 bg-white">
+                            <option value="ALL">ทุกสถานะ</option>
+                            <option value="ว่าง">พร้อมใช้งาน (ว่าง)</option>
+                            <option value="ถูกยืม">ถูกยืม</option>
+                            <option value="ชำรุด">ชำรุด</option>
+                            <option value="ส่งซ่อม">ส่งซ่อม</option>
+                        </select>
+                        <button @click="openAddModal" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1"><i class="fa-solid fa-plus"></i> <span>เพิ่ม</span></button>
+                    </div>
+                </div>
+
+                <!-- Equipment Table -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-400 uppercase font-semibold">
+                                <tr>
+                                    <th class="py-3 px-4">รหัสพัสดุ</th>
+                                    <th class="py-3 px-4">ชื่ออุปกรณ์/พัสดุ</th>
+                                    <th class="py-3 px-4">ประเภท</th>
+                                    <th class="py-3 px-4">ที่อยู่คลังคลังเก็บ</th>
+                                    <th class="py-3 px-4">จำนวนคงเหลือ</th>
+                                    <th class="py-3 px-4">สถานะ</th>
+                                    <th class="py-3 px-4">ผู้ยืมขณะนี้</th>
+                                    <th class="py-3 px-4 text-right">ดำเนินการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="item in filteredItems" :key="item.id" class="hover:bg-slate-50/20">
+                                    <td class="py-3.5 px-4 font-mono text-[10px] text-slate-400">{{ item.assetId }}</td>
+                                    <td class="py-3.5 px-4">
+                                        <div class="font-bold text-slate-800">{{ item.name }}</div>
+                                        <div class="text-[10px] text-slate-400 font-light mt-0.5">{{ item.details }}</div>
+                                    </td>
+                                    <td class="py-3.5 px-4"><span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-medium text-[10px]">{{ item.category }}</span></td>
+                                    <td class="py-3.5 px-4 text-slate-500"><i class="fa-solid fa-location-dot text-indigo-400 mr-1"></i>{{ item.location }}</td>
+                                    <td class="py-3.5 px-4">{{ item.quantity }} <span class="text-slate-400">{{ item.unit }}</span></td>
+                                    <td class="py-3.5 px-4">
+                                        <span :class="[
+                                            item.status === 'ว่าง' ? 'bg-emerald-100 text-emerald-800' :
+                                            item.status === 'ถูกยืม' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800',
+                                            'px-2 py-0.5 rounded-full font-bold inline-flex items-center text-[10px]'
+                                        ]">
+                                            <span :class="[item.status === 'ว่าง' ? 'bg-emerald-500' : item.status === 'ถูกยืม' ? 'bg-amber-500' : 'bg-rose-500', 'w-1 h-1 rounded-full mr-1.5']"></span>
+                                            {{ item.status }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3.5 px-4">
+                                        <div v-if="item.status === 'ถูกยืม'">
+                                            <div class="font-semibold text-slate-700">{{ item.borrower }}</div>
+                                            <div class="text-[10px] text-slate-400">คืน: {{ item.dueDate }}</div>
+                                        </div>
+                                        <span v-else>-</span>
+                                    </td>
+                                    <td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
+                                        <button v-if="item.status === 'ว่าง'" @click="openBorrowModal(item)" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-1 rounded-lg">ยืม</button>
+                                        <button v-if="item.status === 'ถูกยืม'" @click="openReturnModal(item)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg">คืน</button>
+                                        <button @click="openEditModal(item)" class="text-slate-400 hover:text-indigo-600 px-1"><i class="fa-solid fa-pencil"></i></button>
+                                        <button @click="deleteItem(item.id)" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-trash-can"></i></button>
+                                    </td>
+                                </tr>
+                                <tr v-if="filteredItems.length === 0">
+                                    <td colspan="8" class="text-center py-8 text-slate-400">ไม่พบคลังพัสดุตามคำค้นหา</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: TRANSACTION LOGS -->
+            <div v-show="currentTab === 'history'" class="space-y-6">
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex justify-between items-center">
+                    <h3 class="text-sm font-semibold text-slate-800">ประวัติการเข้ายืมและการคืนวัสดุ/ครุภัณฑ์ทั้งหมด</h3>
+                    <input type="text" v-model="searchLogQuery" placeholder="กรองตามชื่อคนยืม, อุปกรณ์..." class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs bg-slate-50/50 focus:outline-indigo-500">
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-400 font-semibold">
+                                <tr>
+                                    <th class="py-3 px-4">วัน-เวลาทำรายการ</th>
+                                    <th class="py-3 px-4">ชื่อสินค้า</th>
+                                    <th class="py-3 px-4">ประเภทงาน</th>
+                                    <th class="py-3 px-4">ผู้รับผิดชอบ</th>
+                                    <th class="py-3 px-4">กำหนดคืนงาน</th>
+                                    <th class="py-3 px-4">หมายเหตุพัสดุ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="log in filteredLogs" :key="log.id">
+                                    <td class="py-3 px-4 font-mono text-slate-400">{{ log.date }}</td>
+                                    <td class="py-3 px-4 font-bold text-slate-800">{{ log.itemName }}</td>
+                                    <td class="py-3 px-4">
+                                        <span :class="[log.type === 'ยืม' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800', 'px-2 py-0.5 rounded text-[10px] font-bold']">{{ log.type }}</span>
+                                    </td>
+                                    <td class="py-3 px-4 font-medium">{{ log.person }}</td>
+                                    <td class="py-3 px-4 text-slate-500">{{ log.dueDate || '-' }}</td>
+                                    <td class="py-3 px-4 text-slate-400 italic">{{ log.notes || '-' }}</td>
+                                </tr>
+                                <tr v-if="filteredLogs.length === 0">
+                                    <td colspan="6" class="text-center py-8 text-slate-400">ยังไม่พบบันทึกธุรกรรม</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MODAL 1: BORROW -->
+        <div v-show="showBorrowModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                <div class="bg-indigo-950 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold text-sm"><i class="fa-solid fa-share mr-2"></i>ทำคำร้องของยืมครุภัณฑ์</h3>
+                    <button @click="closeBorrowModal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form @submit.prevent="submitBorrow" class="p-5 space-y-4">
+                    <div class="bg-slate-50 p-3 rounded-xl text-xs">
+                        <span class="text-slate-400 block font-semibold text-[10px] uppercase">พัสดุที่ยืม:</span>
+                        <div class="font-bold text-slate-800 text-sm">{{ activeItem.name }}</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">{{ activeItem.details }}</div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">ชื่อผู้ต้องการยืม*</label>
+                        <input type="text" v-model="borrowForm.borrower" required placeholder="ระบุชื่อ-นามสกุลจริง..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-indigo-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">วันที่เริ่มต้นยืม*</label>
+                            <input type="date" v-model="borrowForm.borrowDate" required class="w-full border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">กำหนดส่งคืน*</label>
+                            <input type="date" v-model="borrowForm.dueDate" required class="w-full border border-slate-200 rounded-xl px-2 py-1.5 text-xs">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">วัตถุประสงค์งาน</label>
+                        <textarea v-model="borrowForm.notes" rows="2" placeholder="เช่น นำไปใช้ในงานอบรมเทคโนโลยีชั้น 2..." class="w-full border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-indigo-500"></textarea>
+                    </div>
+                    <div class="flex space-x-2 pt-2">
+                        <button type="button" @click="closeBorrowModal" class="w-1/2 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">ยกเลิก</button>
+                        <button type="submit" class="w-1/2 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700">ส่งคำขอยืม</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- MODAL 2: RETURN -->
+        <div v-show="showReturnModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+                <div class="bg-emerald-950 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold text-sm"><i class="fa-solid fa-arrow-turn-down mr-2"></i>ทำเรื่องส่งคืนคลัง</h3>
+                    <button @click="closeReturnModal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <div class="bg-slate-50 p-3 rounded-xl text-xs">
+                        <div class="font-bold text-slate-800 text-sm">{{ activeItem.name }}</div>
+                        <div class="text-[11px] text-slate-500 mt-1">ผู้เบิกใช้งานล่าสุด: <strong>{{ activeItem.borrower }}</strong></div>
+                        <div class="text-[10px] text-rose-500 mt-0.5" v-if="isOverdue(activeItem.dueDate)">เกินกำหนดส่งคืนมาแล้ว!</div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-2">ประเมินสภาพความเรียบร้อยของสินค้าหลังการคืน</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button @click="returnCondition = 'สมบูรณ์'" :class="[returnCondition === 'สมบูรณ์' ? 'bg-emerald-50 text-emerald-800 border-emerald-500 font-bold' : 'bg-white border-slate-200 text-slate-500', 'p-3 rounded-xl border text-center text-xs']">
+                                <i class="fa-solid fa-circle-check text-base block mb-1 text-emerald-500"></i> สภาพปกติครบถ้วน
+                            </button>
+                            <button @click="returnCondition = 'ชำรุด'" :class="[returnCondition === 'ชำรุด' ? 'bg-rose-50 text-rose-800 border-rose-500 font-bold' : 'bg-white border-slate-200 text-slate-500', 'p-3 rounded-xl border text-center text-xs']">
+                                <i class="fa-solid fa-triangle-exclamation text-base block mb-1 text-rose-500"></i> ชำรุด/แตกหักเสียหาย
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">หมายเหตุเพิ่มเติม (ถ้ามี)</label>
+                        <input type="text" v-model="returnNotes" class="w-full border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-indigo-500">
+                    </div>
+                    <div class="flex space-x-2 pt-2">
+                        <button @click="closeReturnModal" class="w-1/2 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">ยกเลิก</button>
+                        <button @click="submitReturn" class="w-1/2 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700">ยืนยันรับคืนงาน</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL 3: ADD/EDIT -->
+        <div v-show="showAddModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold text-sm">{{ isEditMode ? 'แก้ไขพัสดุ' : 'ขึ้นทะเบียนครุภัณฑ์ชิ้นใหม่' }}</h3>
+                    <button @click="closeAddModal"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <form @submit.prevent="saveItem" class="p-5 space-y-3 text-xs">
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-1">ชื่อรายการพัสดุ*</label>
+                        <input type="text" v-model="itemForm.name" required placeholder="เช่น เก้าอี้เบาะเสริม, คอมฯ DELL..." class="w-full border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-indigo-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">หมายเลขรหัสครุภัณฑ์ (Asset ID)*</label>
+                            <input type="text" v-model="itemForm.assetId" required placeholder="เช่น IT-009/67" class="w-full border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">หมวดหมู่*</label>
+                            <select v-model="itemForm.category" required class="w-full border border-slate-200 rounded-xl px-2 py-1.5 bg-white">
+                                <option value="อุปกรณ์คอมพิวเตอร์">อุปกรณ์คอมพิวเตอร์</option>
+                                <option value="เครื่องใช้สำนักงาน">เครื่องใช้สำนักงาน</option>
+                                <option value="เฟอร์นิเจอร์">เฟอร์นิเจอร์</option>
+                                <option value="เทป/อุปกรณ์วัสดุ">เทป/อุปกรณ์วัสดุ</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-600 mb-1">รายละเอียดเพิ่มเติม</label>
+                        <input type="text" v-model="itemForm.details" class="w-full border border-slate-200 rounded-xl px-3 py-1.5">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">จำนวนนับ*</label>
+                            <input type="number" v-model="itemForm.quantity" min="1" required class="w-full border border-slate-200 rounded-xl px-3 py-1.5">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">หน่วยนับ (เช่น เครื่อง, ตัว)*</label>
+                            <input type="text" v-model="itemForm.unit" required class="w-full border border-slate-200 rounded-xl px-3 py-1.5">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-600 mb-1">ที่จัดเก็บในคลัง*</label>
+                            <input type="text" v-model="itemForm.location" required placeholder="เช่น ชั้นวางของ ห้อง A" class="w-full border border-slate-200 rounded-xl px-3 py-1.5">
+                        </div>
+                        <div v-if="isEditMode">
+                            <label class="block font-bold text-slate-600 mb-1">สถานะชิ้นงาน*</label>
+                            <select v-model="itemForm.status" class="w-full border border-slate-200 rounded-xl px-2 py-1.5 bg-white">
+                                <option value="ว่าง">ว่าง (พร้อมใช้งาน)</option>
+                                <option value="ถูกยืม">ถูกยืม</option>
+                                <option value="ชำรุด">ชำรุด</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2 pt-3">
+                        <button type="button" @click="closeAddModal" class="w-1/2 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50">ยกเลิก</button>
+                        <button type="submit" class="w-1/2 py-2 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800">ยืนยันบันทึกข้อมูล</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div v-show="toast.show" class="fixed bottom-5 right-5 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-2 z-50">
+            <span class="text-emerald-400"><i class="fa-solid fa-circle-check"></i></span>
+            <span class="text-xs font-semibold">{{ toast.message }}</span>
+        </div>
+
+        <!-- Fake Scanner -->
+        <div v-show="showQRModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+                <i class="fa-solid fa-camera text-3xl text-indigo-600 mb-2"></i>
+                <h3 class="font-bold text-slate-800 text-xs mb-1">กล้องจำลองการแสกน QR Code</h3>
+                <p class="text-[11px] text-slate-400 mb-4">ระบบแสกนเฉพาะตัวเพื่อเปิดหน้าต่างยืมด่วน</p>
+                <div class="relative w-40 h-40 mx-auto border-4 border-dashed border-indigo-600 rounded-xl flex items-center justify-center bg-slate-950 overflow-hidden mb-4">
+                    <div class="absolute inset-0 opacity-30 bg-gradient-to-b from-indigo-500 via-transparent to-indigo-500 animate-pulse"></div>
+                    <i class="fa-solid fa-qrcode text-5xl text-white"></i>
+                </div>
+                <div class="text-xs text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg">ตรวจพบครุภัณฑ์: <strong>"เครื่องคอมพิวเตอร์ HP"</strong></div>
+                <div class="flex space-x-2">
+                    <button @click="showQRModal = false" class="w-1/2 border border-slate-200 py-2 rounded-xl text-xs text-slate-500">ปิดกล้อง</button>
+                    <button @click="simulateQRSuccess" class="w-1/2 bg-indigo-600 text-white py-2 rounded-xl text-xs font-bold">ดำเนินการ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vue.js 3 Script -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // Main reactive fields
+                const currentTab = ref('dashboard');
+                const searchQuery = ref('');
+                const searchLogQuery = ref('');
+                const filterType = ref('ALL');
+                const filterStatus = ref('ALL');
+                const isLoading = ref(true);
+
+                const items = ref([]);
+                const logs = ref([]);
+
+                // System modal state controlling
+                const showBorrowModal = ref(false);
+                const showReturnModal = ref(false);
+                const showAddModal = ref(false);
+                const showQRModal = ref(false);
+                const isEditMode = ref(false);
+
+                const activeItem = ref({});
+                const returnCondition = ref('สมบูรณ์');
+                const returnNotes = ref('');
+
+                const borrowForm = ref({ borrower: '', borrowDate: '', dueDate: '', notes: '' });
+                const itemForm = ref({ id: null, name: '', assetId: '', category: 'อุปกรณ์คอมพิวเตอร์', details: '', quantity: 1, unit: 'เครื่อง', status: 'ว่าง', location: '' });
+
+                const toast = ref({ show: false, message: '' });
+
+                const showToast = (msg) => {
+                    toast.value.message = msg;
+                    toast.value.show = true;
+                    setTimeout(() => { toast.value.show = false; }, 3000);
+                };
+
+                let chartInstance = null;
+
+                // คอยดึงข้อมูลจาก Google Sheets ตอนเปิดหน้าเว็บแอปขึ้นมาครั้งแรก
+                onMounted(() => {
+                    if (typeof google !== 'undefined') {
+                        google.script.run
+                            .withSuccessHandler((data) => {
+                                items.value = data.items || [];
+                                logs.value = data.logs || [];
+                                isLoading.value = false;
+                                nextTick(() => { initChart(); });
+                            })
+                            .withFailureHandler((err) => {
+                                showToast("เกิดข้อผิดพลาดในการดึงค่าจาก Google Sheets: " + err);
+                                isLoading.value = false;
+                            })
+                            .getInitialData();
+                    } else {
+                        // โหมดรันจำลองเฉพาะทางสำหรับการพรีวิวใน Canvas ของ Gemini
+                        items.value = [
+                            { id: 1, name: "คอมพิวเตอร์พกพา HP", assetId: "COMP-001/69", category: "อุปกรณ์คอมพิวเตอร์", details: "i5 RAM 16GB", quantity: 1, unit: "เครื่อง", status: "ว่าง", borrower: "", dueDate: "", location: "โซนไอที" },
+                            { id: 2, name: "เทปใส 1 นิ้ว", assetId: "TAP-001", category: "เทป/อุปกรณ์วัสดุ", details: "ยี่ห้อตราม้า 1 นิ้ว", quantity: 5, unit: "ม้วน", status: "ว่าง", borrower: "", dueDate: "", location: "ชั้น 1 ตู้ A" }
+                        ];
+                        isLoading.value = false;
+                        nextTick(() => { initChart(); });
+                    }
+                });
+
+                // ตรวจจับการเปลี่ยนแปลงของข้อมูลเพื่อทำการเขียนทับบันทึกกลับลงกูเกิ้ลชีตแบบเรียลไทม์
+                const triggerSync = () => {
+                    isLoading.value = true;
+                    if (typeof google !== 'undefined') {
+                        google.script.run
+                            .withSuccessHandler(() => {
+                                isLoading.value = false;
+                                updateChart();
+                            })
+                            .withFailureHandler((err) => {
+                                isLoading.value = false;
+                                showToast("ไม่สามารถอัปเดตข้อมูลลงกูเกิ้ลชีตได้: " + err);
+                            })
+                            .syncData(JSON.parse(JSON.stringify(items.value)), JSON.parse(JSON.stringify(logs.value)));
+                    } else {
+                        isLoading.value = false;
+                        updateChart();
+                    }
+                };
+
+                // Calculated computations
+                const stats = computed(() => {
+                    const total = items.value.length;
+                    const available = items.value.filter(i => i.status === 'ว่าง').length;
+                    const borrowed = items.value.filter(i => i.status === 'ถูกยืม').length;
+                    const maintenance = items.value.filter(i => i.status === 'ชำรุด' || i.status === 'ส่งซ่อม').length;
+                    return { total, available, borrowed, maintenance };
+                });
+
+                const overdueItems = computed(() => {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    return items.value.filter(i => i.status === 'ถูกยืม' && i.dueDate && i.dueDate < todayStr);
+                });
+
+                const isOverdue = (dateStr) => {
+                    if (!dateStr) return false;
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    return dateStr < todayStr;
+                };
+
+                const uniqueCategories = computed(() => {
+                    return [...new Set(items.value.map(i => i.category))];
+                });
+
+                const filteredItems = computed(() => {
+                    return items.value.filter(item => {
+                        const matchText = item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                                          item.assetId.toLowerCase().includes(searchQuery.value.toLowerCase());
+                        const matchCat = filterType.value === 'ALL' || item.category === filterType.value;
+                        const matchStatus = filterStatus.value === 'ALL' || item.status === filterStatus.value;
+                        return matchText && matchCat && matchStatus;
+                    });
+                });
+
+                const filteredLogs = computed(() => {
+                    return logs.value.filter(log => {
+                        return log.itemName.toLowerCase().includes(searchLogQuery.value.toLowerCase()) ||
+                               log.person.toLowerCase().includes(searchLogQuery.value.toLowerCase());
+                    }).sort((a,b) => b.id - a.id);
+                });
+
+                const recentLogs = computed(() => {
+                    return [...logs.value].sort((a,b) => b.id - a.id).slice(0, 4);
+                });
+
+                const calculatePercentage = (val) => {
+                    if (stats.value.total === 0) return 0;
+                    return Math.round((val / stats.value.total) * 100);
+                };
+
+                // Chart configurations
+                const initChart = () => {
+                    const ctx = document.getElementById('statusChart');
+                    if (!ctx) return;
+                    chartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['ว่าง', 'ถูกยืม', 'ชำรุด'],
+                            datasets: [{
+                                data: [stats.value.available, stats.value.borrowed, stats.value.maintenance],
+                                backgroundColor: ['#10b981', '#f59e0b', '#f43f5e'],
+                                borderWidth: 2,
+                                borderColor: '#ffffff'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            cutout: '75%'
+                        }
+                    });
+                };
+
+                const updateChart = () => {
+                    if (chartInstance) {
+                        chartInstance.data.datasets[0].data = [
+                            stats.value.available,
+                            stats.value.borrowed,
+                            stats.value.maintenance
+                        ];
+                        chartInstance.update();
+                    }
+                };
+
+                // Borrow Logic
+                const openBorrowModal = (item) => {
+                    activeItem.value = item;
+                    const today = new Date();
+                    const nextWeek = new Date();
+                    nextWeek.setDate(today.getDate() + 7);
+
+                    borrowForm.value = {
+                        borrower: '',
+                        borrowDate: today.toISOString().split('T')[0],
+                        dueDate: nextWeek.toISOString().split('T')[0],
+                        notes: ''
+                    };
+                    showBorrowModal.value = true;
+                };
+
+                const closeBorrowModal = () => { showBorrowModal.value = false; };
+
+                const submitBorrow = () => {
+                    const item = items.value.find(i => i.id === activeItem.value.id);
+                    if (item) {
+                        item.status = 'ถูกยืม';
+                        item.borrower = borrowForm.value.borrower;
+                        item.dueDate = borrowForm.value.dueDate;
+
+                        logs.value.push({
+                            id: Date.now(),
+                            itemId: item.id,
+                            itemName: item.name,
+                            assetId: item.assetId,
+                            type: 'ยืม',
+                            person: borrowForm.value.borrower,
+                            date: new Date().toLocaleString('th-TH', { hour12: false }),
+                            dueDate: borrowForm.value.dueDate,
+                            notes: borrowForm.value.notes
+                        });
+                        showToast(`อนุมัติคำขอยืม ${item.name} บันทึกสำเร็จ`);
+                        triggerSync();
+                    }
+                    closeBorrowModal();
+                };
+
+                // Return Logic
+                const openReturnModal = (item) => {
+                    activeItem.value = item;
+                    returnCondition.value = 'สมบูรณ์';
+                    returnNotes.value = '';
+                    showReturnModal.value = true;
+                };
+
+                const closeReturnModal = () => { showReturnModal.value = false; };
+
+                const submitReturn = () => {
+                    const item = items.value.find(i => i.id === activeItem.value.id);
+                    if (item) {
+                        const borrowerName = item.borrower;
+                        item.status = returnCondition.value === 'ชำรุด' ? 'ชำรุด' : 'ว่าง';
+                        item.borrower = '';
+                        item.dueDate = '';
+
+                        logs.value.push({
+                            id: Date.now(),
+                            itemId: item.id,
+                            itemName: item.name,
+                            assetId: item.assetId,
+                            type: 'คืน',
+                            person: borrowerName,
+                            date: new Date().toLocaleString('th-TH', { hour12: false }),
+                            dueDate: '',
+                            notes: returnCondition.value === 'ชำรุด' ? `ชำรุด: ${returnNotes.value}` : `สมบูรณ์ ${returnNotes.value}`
+                        });
+                        showToast(`ยืนยันการรับคืน ${item.name} เรียบร้อยแล้ว`);
+                        triggerSync();
+                    }
+                    closeReturnModal();
+                };
+
+                // Edit & Add operations
+                const openAddModal = () => {
+                    isEditMode.value = false;
+                    itemForm.value = { id: null, name: '', assetId: '', category: 'อุปกรณ์คอมพิวเตอร์', details: '', quantity: 1, unit: 'เครื่อง', status: 'ว่าง', location: '' };
+                    showAddModal.value = true;
+                };
+
+                const openEditModal = (item) => {
+                    isEditMode.value = true;
+                    itemForm.value = { ...item };
+                    showAddModal.value = true;
+                };
+
+                const closeAddModal = () => { showAddModal.value = false; };
+
+                const saveItem = () => {
+                    if (isEditMode.value) {
+                        const idx = items.value.findIndex(i => i.id === itemForm.value.id);
+                        if (idx !== -1) {
+                            items.value[idx] = { ...itemForm.value };
+                            showToast(`แก้ไขข้อมูลพัสดุ ${itemForm.value.name} แล้ว`);
+                        }
+                    } else {
+                        const newItem = { ...itemForm.value, id: Date.now(), borrower: '', dueDate: '' };
+                        items.value.push(newItem);
+                        showToast(`เพิ่มรายชื่อครุภัณฑ์ ${newItem.name} เข้าชีตสำเร็จ`);
+                    }
+                    triggerSync();
+                    closeAddModal();
+                };
+
+                const deleteItem = (id) => {
+                    const item = items.value.find(i => i.id === id);
+                    if (item && confirm(`คุณแน่ใจว่าต้องการลบสินค้า "${item.name}" ออกจากสารบบชีตอย่างถาวรหรือไม่?`)) {
+                        items.value = items.value.filter(i => i.id !== id);
+                        showToast(`ลบรายการครุภัณฑ์เรียบร้อย`);
+                        triggerSync();
+                    }
+                };
+
+                // Mock QR functions
+                const triggerSimulateQR = () => { showQRModal.value = true; };
+                const simulateQRSuccess = () => {
+                    showQRModal.value = false;
+                    const comp = items.value.find(i => i.id === 1) || items.value[0];
+                    if (comp.status === 'ว่าง') {
+                        openBorrowModal(comp);
+                    } else {
+                        openReturnModal(comp);
+                    }
+                };
+
+                return {
+                    currentTab, searchQuery, searchLogQuery, filterType, filterStatus, isLoading,
+                    items, logs, stats, overdueItems, uniqueCategories, filteredItems, filteredLogs, recentLogs,
+                    showBorrowModal, showReturnModal, showAddModal, showQRModal, isEditMode,
+                    activeItem, returnCondition, returnNotes, borrowForm, itemForm, toast,
+                    isOverdue, calculatePercentage, openBorrowModal, closeBorrowModal, submitBorrow,
+                    openReturnModal, closeReturnModal, submitReturn, openAddModal, openEditModal, closeAddModal,
+                    saveItem, deleteItem, triggerSimulateQR, simulateQRSuccess
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
